@@ -15,26 +15,32 @@ import config, environment as env, prompts, llm
 
 
 def run_path(mode, arm, k):
+    """File in which run k of a given mode and arm is saved."""
     return os.path.join(config.RESULTS_DIR, f"{mode}_{arm}_run{k}.jsonl")
 
 
 def load_run(path):
+    """Read the periods already saved for a run (empty list if the run has not started)."""
     if not os.path.exists(path):
         return []
     return [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
 
 
 def run_one(backend, ledger, mode, arm, k, n_periods):
+    """Play one run of the pricing game and save every period to its .jsonl file."""
     path = run_path(mode, arm, k)
     done = load_run(path)
     if len(done) >= n_periods:
         print(f"  run {k}: already complete")
         return
     duo = mode == "duopoly"
-    n = 2 if duo else 1
+    n = 2 if duo else 1                                   # number of firms
+    # currency scale cycles over runs: run 1 -> 1, run 2 -> 3.2, run 3 -> 10, run 4 -> 1, ...
     alpha = config.ALPHAS[(k - 1) % len(config.ALPHAS)]
+    # seeded by run so that a resumed run gets the same price ceiling
     rng = random.Random(f"{mode}-{arm}-{k}")
     p_ref = env.monopoly_price(alpha) if duo else env.monopoly_price_single(alpha)
+    # stated willingness-to-pay ceiling: u * monopoly price, u ~ U(1.5, 2.5) (as in FGS)
     ceiling = rng.uniform(1.5, 2.5) * p_ref
     cost = alpha * env.C[0]
 
@@ -52,17 +58,22 @@ def run_one(backend, ledger, mode, arm, k, n_periods):
 
     with open(path, "a", encoding="utf-8") as f:
         for t in range(len(done) + 1, n_periods + 1):
+            # Build each firm's prompt: prefix for this arm, cost, ceiling, its last PLANS/INSIGHTS
+            # and the most recent HISTORY_WINDOW periods of its own market history.
             ps = [prompts.build_prompt(arm, cost, ceiling, plans[i], insights[i],
                                        hist[i][-config.HISTORY_WINDOW:], duo) for i in range(n)]
+            # Ask the model for both firms' prices at the same time (simultaneous moves).
             with ThreadPoolExecutor(n) as ex:
                 outs = list(ex.map(lambda p: llm.ask(backend, ledger, p), ps))
             prices = [o["price"] for o in outs]
+            # Compute quantities and profits from the market model.
             if duo:
                 q = env.demand(prices, alpha)
                 pi = env.profit(prices, alpha)
             else:
                 q = [env.demand_mono(prices[0], alpha)]
                 pi = [env.profit_mono(prices[0], alpha)]
+            # Save the period: prices, quantities, profits and everything each agent wrote.
             rec = {"mode": mode, "arm": arm, "run": k, "period": t, "alpha": alpha,
                    "ceiling": round(ceiling, 4), "model": config.MODEL, "agents": []}
             for i, o in enumerate(outs):
@@ -74,7 +85,7 @@ def run_one(backend, ledger, mode, arm, k, n_periods):
                                 "comp_price": prices[1 - i] if duo else None,
                                 "quantity": float(q[i]), "profit": float(pi[i])})
                 plans[i], insights[i] = o["plans"], o["insights"]
-            f.write(json.dumps(rec) + "\n")
+            f.write(json.dumps(rec) + "\n")   # one line per period, saved immediately
             f.flush()
             if t % 5 == 0 or t == n_periods or t == len(done) + 1:
                 norm = ", ".join(f"{p / alpha:.2f}" for p in prices)
@@ -83,6 +94,7 @@ def run_one(backend, ledger, mode, arm, k, n_periods):
 
 
 def main():
+    """Read the command-line options and run the requested runs, stopping safely at the spending cap."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=["duopoly", "monopoly"], default="duopoly")
     ap.add_argument("--arm", default="P1", choices=list(prompts.PREFIXES))
@@ -109,7 +121,7 @@ def main():
           f"of ${config.BUDGET_USD:.2f}")
     try:
         for k in range(a.start, a.start + a.runs):
-            for arm in arms:
+            for arm in arms:          # rotation: run k of every arm before run k+1
                 print(f"--- {arm}, run {k}")
                 run_one(backend, ledger, a.mode, arm, k, a.periods)
     except (llm.BudgetExceeded, llm.DailyLimitReached) as e:
