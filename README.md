@@ -1,6 +1,6 @@
 # Prompt Sensitivity in LLM-Based Pricing Agents
 
-Code and data for the MSc Economics dissertation *Prompt Sensitivity in LLM-Based Pricing Agents: Underspecification, Average Prices and Outcome Dispersion in a Repeated Bertrand Game* (Sharon Thomas, The University of Manchester, 2026).
+Code and data for the MSc Economics dissertation *Prompt Sensitivity in LLM-Based Pricing Agents: Underspecification, Average Prices and Outcome Dispersion in a Repeated Bertrand Game* (The University of Manchester, 2026).
 
 Two pricing agents based on Gemini 3.5 Flash-Lite set prices in a repeated Bertrand duopoly with logit demand (Calvano et al., 2020), following the design of Fish, Gonczarowski and Shorrer (2024). Three prompt arms are compared: P1 (baseline), P1-trunc (the clause "thus, you should not take actions which undermine profitability" removed) and P1-para (a paraphrase). Each arm was run 29 times for 100 periods.
 
