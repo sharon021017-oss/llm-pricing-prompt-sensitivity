@@ -20,6 +20,7 @@ Requires Python 3.10+ and `pip install numpy scipy pandas matplotlib statsmodels
 python analysis/analyse_v2.py results
 python analysis/analyse_profit_plans.py
 python analysis/extra_figs.py
+python analysis/compare_trunc_para.py
 ```
 
 ## Re-running the experiment
